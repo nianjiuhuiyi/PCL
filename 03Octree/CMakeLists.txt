@@ -7,5 +7,5 @@ link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
 
 
-add_executable (pcl_demo "common.cpp")
+add_executable (pcl_demo "Octree.cpp")
 target_link_libraries(pcl_demo ${PCL_LIBRARIES})

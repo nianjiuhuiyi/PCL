@@ -16,5 +16,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${OUTPUT_DIRECTORY_ROOT}/lib" CACHE PATH "Ar
 
 # 包含子项目。
 # add_subdirectory ("00BASIC")
-add_subdirectory ("01common")
+# add_subdirectory ("01common")
+# add_subdirectory ("02KdTree")
+add_subdirectory ("03Octree")
 
