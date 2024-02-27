@@ -1,74 +1,111 @@
 #include <iostream>
-#include <sstream>
+#include <vector>
+#include <ctime>
 
-#include <pcl/point_cloud.h>  // 点云类
-#include <pcl/point_types.h>  // 点云数据类型
-#include <pcl/io/openni2_grabber.h>  // 点云获取接口类
-#include <pcl/visualization/cloud_viewer.h>  // 点云可视化类
+#include <pcl/point_cloud.h>  // 点云头文件
+#include <pcl/octree/octree.h>  // 八叉树头文件
+#include <pcl/visualization/cloud_viewer.h>  // 可视化头文件
 
-#include <pcl/compression/octree_pointcloud_compression.h>  // 点云压缩类
+#define PRINT_POINT_DISTANCE( point, distance ) \
+	std::cout << "(" << point.x  << ", "<< point.y << ", " << point.z << ")." \
+		<< " squared distance: " << distance << std::endl
 
-
-
-class SimpleOpenNIViewer {
-public:
-	SimpleOpenNIViewer() : viewer("Point Cloud Compression Example") {
-	}
-	
-	/*
-	在OpenNIGrabber采集循环执行的回调函数cloud_cb_中，首先把获取的点云压缩到stringstream缓冲区，下一步就是解压缩，
-	它对压缩了的二进制数据进行解码，存储在新的点云中解码了,点云被发送到点云可视化对象中进行实时可视化
-	*/
-	void cloud_cb_(const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr &cloud) {
-		if (!this->viewer.wasStopped()) {
-			// 存储压缩点云的字节流对象
-			std::stringstream compressedData;
-			// 存储输出点云
-			pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloudOut(new pcl::PointCloud<pcl::PointXYZRGBA>());
-
-			// 压缩点云
-			this->PointCloudEncoder->encodePointCloud(cloud, compressedData);
-
-			// 解压缩点云
-			this->PointCloudDecoder->decodePointCloud(compressedData, cloudOut);
-
-			// 可视化解压缩点云
-			viewer.showCloud(cloudOut);
-		}
-	
-	}
-
-	void run() {
-		bool showStatistics = true;  // 设置在标准设备上输出打印压缩结果信息
-		// 压缩选项详情在: pcl/compression/compression_profiles.h
-		pcl::io::compression_Profiles_e compressionProfile = pcl::io::MED_RES_ONLINE_COMPRESSION_WITH_COLOR;
-		
-		// 初始化压缩和解压缩对象，其中压缩对象需设定压缩参数选项，解压缩按照数据源自行判断
-		this->PointCloudEncoder = new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>(compressionProfile, showStatistics);
-		this->PointCloudDecoder = new pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA>();
-
-		/*
-		下面的代码为OpenNI兼容设备实例化一个新的采样器，并且启动循环回调接口，每从设备获取一帧数据就回调函数一次，
-		这里的回调函数就是实现数据压缩和可视化解压缩结果。
-		*/
-		// 创建从OpenNI获取点云的抓取对象
-		pcl::Grabber *interface = new pcl::Grabber();
-
-		// 建立回调函数
-		boost::function<void(const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr &)> f = boost::bind(&this->cloud_cb_, this, boost::placeholders::_1);
-
-		// 建立回调函数和回调信息的绑定
-		boost::signals2::connection con = interface->registerCallback(f);
-
-
-	}
-
-	pcl::visualization::CloudViewer viewer;
-	pcl::io::OctreePointCloudCompression<pcl::PointXYZRGBA> *PointCloudEncoder, *PointCloudDecoder;
-};
+#define PRINT_POINT( point ) \
+	std::cout << "(" << point.x  << ", "<< point.y << ", " << point.z << ")" << std::endl
 
 
 int main(int argc, char* argv[]) {
+	std::srand((unsigned int)time(NULL));  // 用系统时间初始化随机种子
+	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
 
+	// 创建点云数据
+	cloud->width = 1000;
+	cloud->height = 1;  // 无序
+	cloud->points.resize(cloud->height * cloud->width);
+	// 随机循环产生点云的坐标值(产生0-1023的随机值，上面有写到过，用的是for循环)
+	// 它本质就是一个STL容器，可以用pcl::PointCloud<pcl::PointXYZ>::iterator iter = cloud->begin()进行循环
+	for(auto &point : cloud->points) {
+		point.x = 1024.0f * rand() / (RAND_MAX + 1.0f);
+		point.y = 1024.0f * rand() / (RAND_MAX + 1.0f);
+		point.z = 1024.0f * rand() / (RAND_MAX + 1.0f);
+	}
+
+	/*
+	创建一个octree实例，用设置分辨率进行初始化，该octree用它的页结点存放点索引向量，
+	分辨率参数描述最低一级octree的最小体素的尺寸，因此octree的深度是分辨率和点云空间维度的函数，
+	如果知道点云的边界框，应该用defineBoundingbox方法把它分配给octree然后通过点云指针把所有点增加到octree中。
+	*/
+	// 该参数描述了octree叶子leaf节点的最小体素尺寸
+	float resolution = 128.0;  // 设置分辨率为128
+	pcl::octree::OctreePointCloudSearch<pcl::PointXYZ> octree(resolution);
+	// 设置输入点云
+	octree.setInputCloud(cloud);  // 这两句是最关键的建立PointCloud和octree之间的联系
+	octree.addPointsFromInputCloud();  // 构建octree
+
+	pcl::PointXYZ searchPoint;  // 设置搜索点
+	searchPoint.x = 1024.f * rand() / (RAND_MAX + 1.0f);
+	searchPoint.y = 1024.f * rand() / (RAND_MAX + 1.0f);
+	searchPoint.z = 1024.f * rand() / (RAND_MAX + 1.0f);
+	//pcl::PointXYZ searchPoint = cloud->points.at(10);
+
+	/* Neighbors within voxel search
+	方式一：“体素近邻搜索”，它把查询点所在的体素中其它点的索引作为查询结果返回，
+		结果以点索引向量的形式保存，因此搜索点和搜索结果之间的距离取决于八叉树的分辨率参数
+	*/
+	std::vector<int> pointIdxVec;
+	if (octree.voxelSearch(searchPoint, pointIdxVec)) {
+		std::cout << "Neighbors within voxel search at ";
+		PRINT_POINT(searchPoint);
+		std::vector<int>::const_iterator iter = pointIdxVec.cbegin();
+		for (; iter != pointIdxVec.cend(); ++iter) {
+			std::cout << "  ";
+			PRINT_POINT(cloud->points.at(*iter));
+		}
+	}
+	std::cout << pointIdxVec.size() << std::endl;
+
+	/*  K nearest neighbor search
+	方式二：K近邻搜索，本例中k设为10，这会把搜索结果写到两个分开的向量中
+	*/
+	int K = 10;
+	std::vector<int> pointIdxNKNSearch;  // 包含搜索结果，即结果点的索引的向量
+	std::vector<float> pointNKNSquareDistance;  // 保存相应的搜索点和近邻之间的距离平方
+
+	if (octree.nearestKSearch(searchPoint,K, pointIdxNKNSearch, pointNKNSquareDistance) > 0) {
+		std::cout << "\nK nearest neighbor search at ";
+		PRINT_POINT(searchPoint);
+		for (size_t i = 0; i < pointIdxNKNSearch.size(); ++i) {
+			PRINT_POINT_DISTANCE(cloud->points.at(pointIdxNKNSearch[i]), pointNKNSquareDistance.at(i));
+		}
+	}
+
+	/* Neighbors within radius search
+	方式三：半径内近邻搜索，和方式二类似
+	*/
+	std::vector<int> pointIdxRadiusSearch;
+	std::vector<float> pointRadiusSquareDistance;
+
+	float radius = 256.0f * rand() / (RAND_MAX + 1.0f);
+	if (octree.radiusSearch(searchPoint, radius, pointIdxRadiusSearch, pointRadiusSquareDistance) > 0) {
+		std::cout << "\nNeighbors within radius search at ";
+		PRINT_POINT(searchPoint);
+		std::cout << "radius: " << radius; 
+		for (size_t i = 0; i < pointIdxRadiusSearch.size(); ++i) {
+			PRINT_POINT_DISTANCE(cloud->points.at(pointIdxRadiusSearch.at(i)), pointRadiusSquareDistance[i]);
+		}
+	}
+
+	pcl::visualization::PCLVisualizer viewer("PCL Viewer");
+	viewer.setBackgroundColor(0.0, 0.0, 0.5);
+	viewer.addPointCloud<pcl::PointXYZ>(cloud, "cloud");
+
+	pcl::PointXYZ originPoint(0.0, 0.0, 0.0);
+	viewer.addLine(originPoint, searchPoint);  // 添加原点到搜索点的线
+	viewer.addSphere(searchPoint, radius, "sphere", 0);  // 添加一个球
+	viewer.addCoordinateSystem(200);  // 添加一个放到200倍后的坐标系
+
+	while (!viewer.wasStopped()) {
+		viewer.spinOnce();
+	}
 	return 0;
 }
