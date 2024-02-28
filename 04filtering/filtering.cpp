@@ -9,6 +9,10 @@
 #include <pcl/filters/uniform_sampling.h>  // pcl::UniformSampling 类需要
 #include <pcl/filters/statistical_outlier_removal.h>  // pcl::StatisticalOutlierRemoval 类需要
 
+#include <pcl/filters/conditional_removal.h>
+#include <pcl/filters/radius_outlier_removal.h>
+#include <pcl/visualization/pcl_visualizer.h>
+
 #define PRINT_POINT( point ) \
 	std::cout << "(" << point.x  << ", "<< point.y << ", " << point.z << ")" << std::endl
 
@@ -88,8 +92,7 @@ void uniform_sampleing() {
 	std::cout << "UniformSampling size: " << cloud_uniform->size() << std::endl;
 }
 
-
-int main(int argc, char* argv[]) {
+void StatisticalOutlierRemoval() {
 	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
 	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filtered(new pcl::PointCloud<pcl::PointXYZ>());
 
@@ -118,7 +121,69 @@ int main(int argc, char* argv[]) {
 	sor.setNegative(true);
 	sor.filter(*cloud_filtered);
 	writer.write<pcl::PointXYZ>("./table_scene_lms400_outliers.pcd", *cloud_filtered);
+}
 
-	system("pause");
+
+int main(int argc, char* argv[]) {
+	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
+	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filtered(new pcl::PointCloud<pcl::PointXYZ>());
+
+	cloud->width = 100; cloud->height = 1;
+	cloud->points.resize(cloud->width * cloud->height);
+	for (auto &point : cloud->points) {
+		point.x = 1 * rand() / (RAND_MAX + 1.0f);
+		point.y = 1 * rand() / (RAND_MAX + 1.0f);
+		point.z = 1 * rand() / (RAND_MAX + 1.0f);
+	}
+
+	bool IF_CONDITION = false;  // true：条件滤波；false：半径离群值滤波
+	if (IF_CONDITION) {  // 条件滤波
+		// 创建过滤条件 (z的值大于0.25，小于0.75)
+		pcl::ConditionAnd<pcl::PointXYZ>::Ptr range_cond(new pcl::ConditionAnd<pcl::PointXYZ>());
+		range_cond->addComparison(pcl::FieldComparison<pcl::PointXYZ>::ConstPtr(
+			new pcl::FieldComparison<pcl::PointXYZ>("z", pcl::ComparisonOps::GT, 0.25)));
+		range_cond->addComparison(pcl::FieldComparison<pcl::PointXYZ>::ConstPtr(
+			new pcl::FieldComparison<pcl::PointXYZ>("z", pcl::ComparisonOps::LT, 0.75)));
+		// 创建条件过滤器
+		pcl::ConditionalRemoval<pcl::PointXYZ> condrem;
+		condrem.setInputCloud(cloud);
+		condrem.setCondition(range_cond);
+		condrem.setKeepOrganized(true);
+		// 应用过滤,结果保存到cloud_filtered
+		condrem.filter(*cloud_filtered);
+	}
+	else {  // 半径离群值滤波
+		pcl::RadiusOutlierRemoval<pcl::PointXYZ> ror;
+		// 创建过滤器
+		ror.setInputCloud(cloud);
+		ror.setRadiusSearch(0.15);   // 0.15算是超参,越大，搜索半径会大，保留下的点就会更多
+		ror.setMinNeighborsInRadius(2);  // 这就是最小邻居个数，越大满足条件的就少，留下的点就会少
+		ror.filter(*cloud_filtered);
+	}
+	
+	std::cout << "Cloud before filtering: " << std::endl;
+	for (auto iter = cloud->points.cbegin(); iter != cloud->points.cend(); ++iter) {
+		PRINT_POINT((*iter));
+	}
+	std::cout << "\n\nCloud after filtering: " << std::endl;
+	for (auto &point : cloud_filtered->points) {
+		PRINT_POINT(point);
+	}
+
+	// 展示：（先展示原来的点云(绿色)，再把过滤后的点云(红色)添加进去，红色的本就是绿色的一部分，位置是一样的，红色的就会把绿色的覆盖，所以看起来就是红的、绿的都有）
+	pcl::visualization::PCLVisualizer::Ptr viewer(new pcl::visualization::PCLVisualizer("3D viewer"));
+	viewer->setBackgroundColor(0.05, 0.05, 0.05, 0);  // 背景灰色
+	// 过滤前的点云，(可以指定颜色，也可以去掉single_color参数不设置)（rgb，绿色）
+	pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> single_color(cloud, 0, 255, 0);
+	viewer->addPointCloud<pcl::PointXYZ>(cloud, single_color, "cloud");
+	viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 2, "cloud");
+	// 过滤后的点云，(红色)
+	pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> single_color2(cloud_filtered, 255, 0, 0);
+	viewer->addPointCloud<pcl::PointXYZ>(cloud_filtered, single_color2, "cloud_filtered");
+	viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 4, "cloud_filtered");
+	viewer->addCoordinateSystem(1.0);
+	while (!viewer->wasStopped()) {
+		viewer->spinOnce();
+	}
 	return 0;
 }
