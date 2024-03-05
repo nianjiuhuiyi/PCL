@@ -22,5 +22,6 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${OUTPUT_DIRECTORY_ROOT}/lib" CACHE PATH "Ar
 # add_subdirectory ("04filtering")
 # add_subdirectory ("05RangeImage")
 # add_subdirectory ("06Keypoints")
-add_subdirectory ("07RANSAC")
+# add_subdirectory ("07RANSAC")
+add_subdirectory ("08normal")
 
