@@ -7,5 +7,6 @@ link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
 
 # add_executable (pcl_demo "IcpAndNdt.cpp")
-add_executable (pcl_demo "alignment_prerejective.cpp")
+# add_executable (pcl_demo "alignment_prerejective.cpp")
+add_executable (pcl_demo "interactive_icp.cpp")
 target_link_libraries(pcl_demo ${PCL_LIBRARIES})
