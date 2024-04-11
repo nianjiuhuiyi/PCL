@@ -27,5 +27,6 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${OUTPUT_DIRECTORY_ROOT}/lib" CACHE PATH "Ar
 # add_subdirectory ("09feature_pfh")
 # add_subdirectory ("10getOBB")
 # add_subdirectory ("11ICPANDNDT")
-add_subdirectory ("12segmentation")
+# add_subdirectory ("12segmentation")
+add_subdirectory ("13resampling")
 
