@@ -7,6 +7,6 @@ link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
 add_definitions(-DPCL_NO_PRECOMPILE)
 
-add_executable (pcl_demo "reconstruct.cpp")
+add_executable (pcl_demo "mls.cpp")
 target_link_libraries(pcl_demo ${PCL_LIBRARIES})
 set_target_properties(pcl_demo PROPERTIES COMPILE_FLAGS "/bigobj")
