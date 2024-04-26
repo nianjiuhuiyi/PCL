@@ -7,6 +7,7 @@
 #include <pcl/features/moment_of_inertia_estimation.h>
 
 int main(int argc, char* argv[]) {
+	
 	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
 	if (pcl::io::loadPCDFile("table_scene_lms400_downsampled.pcd", *cloud) == -1)
 		return -1;
@@ -17,20 +18,30 @@ int main(int argc, char* argv[]) {
 
 	std::vector<float> moment_of_inertia;  // 存放惯性矩的特征向量
 	std::vector<float> eccentricity;  // 存放偏心率的特征向量
-	pcl::PointXYZ min_point_OBB, max_point_OBB, position_OBB;  
-	Eigen::Matrix3f rotational_matrix_OBB;   // 这四个是OBB对应的参数
 	float major_value, middle_value, minor_value;  // 三个特征值
 	Eigen::Vector3f major_vector, middle_vector, minor_vector;  // 三个特征向量
 	Eigen::Vector3f mass_center;  // 质心
 
+	// 这四个是OBB对应的参数
+	pcl::PointXYZ min_point_OBB, max_point_OBB, position_OBB;
+	Eigen::Matrix3f rotational_matrix_OBB;
+	// 这是AABB对应的参数
+	pcl::PointXYZ min_point_AABB, max_point_AABB;
+
 	feature_extractor.getMomentOfInertia(moment_of_inertia);  // 得到惯性矩
 	feature_extractor.getEccentricity(eccentricity);  // 得到偏心率
+
+	// 获取OBB盒子
 	feature_extractor.getOBB(min_point_OBB, max_point_OBB, position_OBB, rotational_matrix_OBB);
 	feature_extractor.getEigenValues(major_value, middle_value, minor_value);
-	feature_extractor.getEigenVectors(major_vector, middle_vector, minor_vector);
-	feature_extractor.getMassCenter(mass_center);
+	// 获取AABB盒子
+	feature_extractor.getAABB(min_point_AABB, max_point_AABB);
 
-	// 可视化
+	// 获取主轴major_vector，中轴middle_vector，辅助轴minor_vector
+	feature_extractor.getEigenVectors(major_vector, middle_vector, minor_vector);
+	feature_extractor.getMassCenter(mass_center);  // 获取质心
+
+	// 可视化（先把初始点云添加进去）
 	pcl::visualization::PCLVisualizer viewer("viewer");
 	viewer.setBackgroundColor(1, 1, 1);
 	viewer.addCoordinateSystem(1.0);
@@ -38,18 +49,25 @@ int main(int argc, char* argv[]) {
 	viewer.addPointCloud<pcl::PointXYZ>(cloud, pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ>(cloud, 0, 255, 0), "original cloud");
 	viewer.setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 5, "original cloud");
 	
-	Eigen::Vector3f position(position_OBB.x, position_OBB.y, position_OBB.z);
+	// 添加OBB包容盒
+	Eigen::Vector3f position(position_OBB.x, position_OBB.y, position_OBB.z);  // 中心位置
+	Eigen::Quaternionf quat(rotational_matrix_OBB);  // 旋转矩阵
 	std::cout << "position_OBB: " << position_OBB << std::endl;
 	std::cout << "mass_center: " << mass_center << std::endl;
-	Eigen::Quaternionf quat(rotational_matrix_OBB);
-	
-	// 添加立方体
-	viewer.addCube(position, quat, max_point_OBB.x - min_point_OBB.x, max_point_OBB.y - min_point_OBB.y, max_point_OBB.z - min_point_OBB.z, "OBB");
-	viewer.setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_COLOR, 0, 0, 1, "OBB");
+	viewer.addCube(position, quat, max_point_OBB.x - min_point_OBB.x, max_point_OBB.y - min_point_OBB.y, max_point_OBB.z - min_point_OBB.z, "OBB");  // x宽度、y高度、z深度
+	viewer.setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_COLOR, 0, 0, 1, "OBB"); // 设置为蓝色
 	viewer.setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_OPACITY, 0.1, "OBB");
 	viewer.setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_LINE_WIDTH, 4, "OBB");
-	// 这步很关键，将所有的actor的可视化改为线框表示
+	//viewer.setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_REPRESENTATION, pcl::visualization::PCL_VISUALIZER_REPRESENTATION_WIREFRAME, "OBB");
+
+	// 添加AABB包容盒
+	viewer.addCube(min_point_AABB.x, max_point_AABB.x, min_point_AABB.y, max_point_AABB.y, min_point_AABB.z, max_point_AABB.z, 1.0, 1.0, 0.0, "AABB");  // 这应该是addCube的重载，添加的是正的立方体，所以不要旋转矩阵(1.0,1.0,0.0 这三个代表的是黄色)
+	viewer.setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_LINE_WIDTH, 4, "AABB");
+	//viewer.setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_REPRESENTATION, pcl::visualization::PCL_VISUALIZER_REPRESENTATION_WIREFRAME, "AABB");
+	
+	// 这步很关键，将所有的actor的可视化改为线框表示（这样上面的63、68行应该是一个作用）
 	viewer.setRepresentationToWireframeForAllActors();
+
 
 	pcl::PointXYZ center(mass_center(0), mass_center[1], mass_center(2));  // []就是重载的，一个意思
 	pcl::PointXYZ x_axis(major_vector[0] + mass_center[0], major_vector[1] + mass_center(1), major_vector[2] + mass_center[2]);  
